@@ -898,3 +898,90 @@ with st.expander("How this plugs into Zendesk in production"):
     st.markdown(
         "The QA logic stays the same – we just map structured JSON into the same transcript format."
     )
+
+with st.expander("How this demo is wired under the hood"):
+    st.markdown(
+        """
+### High-level flow
+
+1. **Ticket in**  
+   - You paste a transcript (or we normalize a Zendesk payload).
+   - We treat it as the single source of truth for this evaluation.
+
+2. **Evaluation call**  
+   - `evaluate_ticket()` builds a strict JSON prompt and calls `gpt-4.1-mini`.
+   - The model returns:
+     - A 1–5 score for each of 5 dimensions
+     - An overall rating
+     - A `root_cause` label: `agent_performance`, `content_gap`, or `mixed`
+     - A short `coaching_summary`
+
+3. **Routing based on root cause**  
+   - If `root_cause` is `agent_performance` → we surface coaching only.
+   - If `root_cause` is `content_gap` or `mixed` → we also surface a **KB article suggestion**.
+
+4. **Closing the content loop**  
+   - When there’s a KB suggestion, `generate_kb_article()` asks the model to draft a structured KB article.
+   - In a real deployment, an approver would push that into the help center (Confluence, Zendesk Guide, Notion, etc.).
+
+5. **Coaching history & Canon**  
+   - Each evaluation appends an entry to `coaching_history` in `st.session_state`.
+   - The **Team-wide Coaching Canon** button calls `generate_team_insights()`:
+     - It feeds all coaching items to the model.
+     - The model returns a single Markdown doc with:
+       - Common patterns
+       - Coaching themes
+       - Where content gaps are hurting deflection / FCR / churn.
+
+6. **ROI sandbox**  
+   - The ROI section is pure Python math – no model calls.
+   - It takes:
+     - Ticket volume
+     - Cost per case
+     - Current vs improved deflection
+     - Churn probabilities on high-risk tickets
+   - It then shows:
+     - Estimated support cost savings
+     - Estimated revenue preserved from avoided churn
+     - A combined annual impact.
+
+### Key components
+
+- **Frontend / UX**: Streamlit, backed by `st.session_state` for:
+  - Last evaluation
+  - KB drafts
+  - Coaching history
+  - Team-wide insights
+
+- **LLM back-end**:
+  - `gpt-4.1-mini` for all reasoning, with:
+    - JSON-constrained prompt for evaluation
+    - Markdown prompts for KB + Canon
+
+- **Integrations (demo vs. production)**:
+  - Demo:
+    - Manual ticket paste
+    - Mock Zendesk payload to show how normalization works
+  - Production:
+    - Webhooks from Zendesk / Service Cloud on ticket status changes
+    - Writes back to QA dashboards, KB systems, and analytics
+
+### How this would evolve
+
+In a real Ask-AI deployment, you would typically:
+
+- Run this evaluator **asynchronously** on every closed ticket.
+- Log all results to a central store (e.g., Postgres / BigQuery).
+- Drive:
+  - Team QA dashboards
+  - Automatic content creation queues
+  - Alerts for repeat patterns on key accounts
+- Tune the ROI assumptions using:
+  - Historical deflection
+  - Escalation rates
+  - NRR / logo churn data.
+
+This demo keeps the same architecture, just compressed into a single Streamlit app so we can walk through it in one sitting.
+        """
+    )
+
